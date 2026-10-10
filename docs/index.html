@@ -15,6 +15,10 @@
         .rank-badge { width:48px; height:48px; display:flex; align-items:center; justify-content:center; font-size:1.5rem; }
         .loading-spinner { border:3px solid #374151; border-top:3px solid #3b82f6; border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; }
         @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+        @media (prefers-reduced-motion: reduce) {
+            .fade-in { animation: none; }
+            .loading-spinner { animation-duration: 3s; }
+        }
     </style>
 </head>
 <body class="bg-gradient-to-br from-gray-900 to-gray-800 min-h-screen p-4 md:p-8">
@@ -27,22 +31,97 @@
         <div id="lastUpdate" class="text-sm text-gray-400 mt-2"></div>
     </div>
 
-    <!-- Tabs -->
+    <!-- Metric tabs -->
     <div class="flex mb-6 border-b border-gray-600">
         <button id="tab-rmse" onclick="showTab('rmse')"
-            class="px-6 py-3 text-white font-semibold border-b-2 border-blue-500 focus:outline-none">
+            class="px-6 py-3 text-white font-semibold border-b-2 border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-t">
             Model Performance (RMSE)
         </button>
-        <button id="tab-econ" onclick="showTab('econ')"
-            class="px-6 py-3 text-gray-400 font-semibold border-b-2 border-transparent focus:outline-none hover:text-white">
-            Economic Performance
+        <button id="tab-mae" onclick="showTab('mae')"
+            class="px-6 py-3 text-gray-400 font-semibold border-b-2 border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-t hover:text-white">
+            Error Breakdown (MAE / Shape / Bias)
+        </button>
+        <button id="tab-cluster_ari" onclick="showTab('cluster_ari')"
+            class="px-6 py-3 text-gray-400 font-semibold border-b-2 border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-t hover:text-white">
+            Tie-breaker (clustering ARI)
         </button>
     </div>
 
-    <!-- Search -->
-    <div class="mb-6 bg-gray-800 rounded-lg shadow-md p-4">
-        <input type="text" id="searchInput" placeholder="Search participant ID or tier…"
-            class="w-full px-4 py-3 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white placeholder-gray-400"/>
+    <!-- How to read this -->
+    <div class="mb-6 bg-gray-800/60 border border-gray-700 rounded-lg p-4 text-sm text-gray-300">
+        Ranked on <span class="text-orange-400 font-semibold">RMSE</span>. The scored days come
+        from only a handful of misalignment regimes, so most RMSE differences are smaller than
+        the noise. A paired bootstrap over whole regimes decides which differences are real:
+        submissions it cannot separate share a <span class="text-slate-300 font-semibold">Band</span>,
+        and inside a band the <span class="text-fuchsia-400 font-semibold">clustering ARI</span>
+        sets the order as it measures whether the regimes were identified at all, which is what
+        RMSE is too noisy to judge. No clustering scores 0.00, and for ranking anything
+        below zero counts as zero. Negative scores are still shown as feedback. Where a band ties at zero, RMSE decides.
+        The <span class="text-gray-200 font-semibold">Error Breakdown</span> tab contains additional information:
+        <span class="text-lime-400 font-semibold">MAE</span> (Mean Absolute Error), 
+        <span class="text-lime-400 font-semibold">Bias</span> (mean signed error) and
+        <span class="text-purple-400 font-semibold">Shape</span> (day-to-day scatter once that offset is
+        removed). RMSE² = Bias² + Shape². Error breakdown does not affect ranking.
+    </div>
+
+    <!-- Filters -->
+    <div class="mb-6 bg-gray-800 rounded-lg shadow-md p-4 space-y-4">
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label for="filterParticipant" class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">
+                    Participant ID
+                </label>
+                <input type="text" id="filterParticipant" placeholder="e.g. 23, 24, 25 or 23-25"
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white placeholder-gray-500"/>
+            </div>
+            <div>
+                <label for="filterTier" class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">
+                    Tier
+                </label>
+                <input type="text" id="filterTier" placeholder="e.g. T0, T3 or 0,3"
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white placeholder-gray-500"/>
+            </div>
+            <div>
+                <label for="filterSub" class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">
+                    Submission #
+                </label>
+                <input type="text" id="filterSub" placeholder="e.g. 0, 1, 2 or 0-3"
+                    class="w-full px-3 py-2 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-700 text-white placeholder-gray-500"/>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-x-6 gap-y-3">
+
+            <!-- Split toggle -->
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Split</span>
+                <div class="inline-flex rounded-lg border border-gray-600 overflow-hidden">
+                    <button id="split-validate" onclick="setSplit('validate')"
+                        class="px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">Validate</button>
+                    <button id="split-final" onclick="setSplit('final')"
+                        class="px-3 py-1.5 text-sm border-l border-gray-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">Final</button>
+                </div>
+            </div>
+
+            <!-- Best / all toggle -->
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Show</span>
+                <div class="inline-flex rounded-lg border border-gray-600 overflow-hidden">
+                    <button id="scope-best" onclick="setScope('best')"
+                        class="px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">Best only</button>
+                    <button id="scope-all" onclick="setScope('all')"
+                        class="px-3 py-1.5 text-sm border-l border-gray-600 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500">All submissions</button>
+                </div>
+            </div>
+
+            <button onclick="clearFilters()"
+                class="px-3 py-1.5 text-sm text-gray-300 border border-gray-600 rounded-lg hover:text-white hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                Clear filters
+            </button>
+
+            <div id="filterCount" class="text-sm text-gray-400 ml-auto"></div>
+        </div>
     </div>
 
     <!-- Loading -->
@@ -55,11 +134,8 @@
         <strong>Error:</strong> <span id="errorMessage"></span>
     </div>
 
-    <!-- RMSE leaderboard -->
-    <div id="board-rmse" class="space-y-3"></div>
-
-    <!-- Economic leaderboard -->
-    <div id="board-econ" class="hidden space-y-3"></div>
+    <!-- Leaderboard -->
+    <div id="board" class="space-y-3"></div>
 
     <!-- Stats -->
     <div id="stats" class="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4"></div>
@@ -67,31 +143,115 @@
 
 <script>
 const BASE = 'https://wedowind.github.io/NADARA-Static-Yaw-Misalignment-Submissions/';
-const RMSE_URL = BASE + 'rmse_ranking.csv';
-const ECON_URL = BASE + 'economic_ranking.csv';
-
-let rmseData = [], econData = [];
-let currentTab = 'rmse';
-
-const TIER_LABELS = { U: 'Unsupervised', C: 'Calibrated', S: 'Supervised' };
-const TIER_COLORS = {
-    U: 'bg-emerald-900 text-emerald-200',
-    C: 'bg-blue-900 text-blue-200',
-    S: 'bg-purple-900 text-purple-200',
+const SPLIT_URLS = {
+    validate: BASE + 'rmse_ranking.csv',
+    final:    BASE + 'rmse_ranking_final.csv',
 };
 
-function tierBadge(tier) {
-    const cls = TIER_COLORS[tier] || 'bg-gray-700 text-gray-200';
-    const label = TIER_LABELS[tier] || tier;
-    return `<span class="inline-block ${cls} px-2 py-1 rounded text-xs font-medium">${label}</span>`;
+// Rows per split. `final` stays an empty array until final submissions exist.
+let data = { validate: [], final: [] };
+let splitLoaded = { validate: false, final: false };
+
+let currentMetric = 'rmse';   // 'rmse' | 'mae'
+let currentSplit  = 'validate';
+let currentScope  = 'best';   // 'best' | 'all'
+
+// TK: K is how many labelled turbines the method needed. The colours run from
+// green to amber with K, because K is the cost of deploying the method on a new
+// turbine -- T0 needs no field campaign at all, T4 needs one on every turbine.
+const TIER_LABELS = {
+    T0: 'T0 · no labels',
+    T1: 'T1 · 1 turbine',
+    T2: 'T2 · 2 turbines',
+    T3: 'T3 · 3 turbines',
+    T4: 'T4 · target labels',
+};
+const TIER_COLORS = {
+    T0: 'bg-emerald-900 text-emerald-200',
+    T1: 'bg-teal-900 text-teal-200',
+    T2: 'bg-sky-900 text-sky-200',
+    T3: 'bg-indigo-900 text-indigo-200',
+    T4: 'bg-amber-900 text-amber-200',
+};
+const TIER_TITLES = {
+    T0: 'No labels used anywhere — unsupervised or physics-based.',
+    T1: 'Labels from one train turbine.',
+    T2: 'Labels from two train turbines.',
+    T3: 'Labels from all three train turbines.',
+    T4: 'Also used labels from the scored turbine. Penalised when choosing the final winner.',
+};
+
+const METRIC_LABELS = { rmse: 'RMSE (°)', mae: 'MAE (°)', shape: 'Shape (°)',
+                        bias: 'Bias (°)', cluster_ari: 'Cluster ARI' };
+// Two decimals, not four. The smallest RMSE difference the paired bootstrap can
+// call real is around 0.02, so a third decimal is noise dressed up as precision.
+// Two entries inside one band may print the same figure -- that is the point:
+// they are tied on RMSE and the cluster ARI is what separates them.
+const METRIC_DECIMALS = { rmse: 2, mae: 2, shape: 2, bias: 2, cluster_ari: 2 };
+const METRIC_COLORS = { rmse: 'text-orange-400', mae: 'text-cyan-400', shape: 'text-purple-400',
+                        bias: 'text-lime-400', cluster_ari: 'text-fuchsia-400' };
+// Tooltip text for each metric's block on the card.
+const METRIC_TITLES = {
+    rmse: 'Root mean squared error over turbine-days. Primary ranking metric.',
+    mae: 'Mean absolute error over turbine-days.',
+    shape: "Standard deviation of the day-to-day error with the mean offset (bias) removed. RMSE² = Bias² + Shape². Informational, not ranked.",
+    bias: 'Mean signed error. Positive means predictions run high, negative means low. Informational, not ranked.',
+    cluster_ari: 'Adjusted Rand Index of the submitted misalignment-regime clustering against ground truth. Tie-breaker within a band.',
+};
+// RMSE and MAE are better when small, ARI when large. Bias has no "smaller is
+// better" direction -- closer to zero is better either side -- so it is left
+// out of LOWER_IS_BETTER and never drives the stats-bar best/leader figures.
+const LOWER_IS_BETTER = { rmse: true, mae: true, shape: true, cluster_ari: false };
+// The metric(s) shown beside the active one on each tab's card. The Error
+// Breakdown tab (mae) shows three figures at once -- MAE plus the RMSE = Bias +
+// Shape split -- instead of one companion, since none of the three on its own
+// tells the whole story.
+const COMPANION = { rmse: ['mae'], mae: ['shape', 'bias'], cluster_ari: ['rmse'] };
+
+// Submissions sharing a band are statistically tied on RMSE -- the scored days
+// come from too few misalignment regimes to separate them -- so within a band
+// the ordering comes from cluster_ari, not RMSE.
+function bandBadge(band) {
+    const n = parseInt(band);
+    if (!Number.isFinite(n)) return '';
+    return `<span class="inline-block bg-slate-700 text-slate-200 px-2 py-1 rounded text-xs font-medium"
+        title="Statistical band ${n}. Submissions in the same band cannot be separated on RMSE; they are ordered by cluster agreement (ARI).">Band ${n}</span>`;
 }
 
-function fmt(v, decimals) { return isNaN(v) ? '—' : parseFloat(v).toFixed(decimals); }
-function fmtEur(v) {
-    const n = parseFloat(v);
-    if (isNaN(n)) return '—';
-    return '€' + n.toLocaleString('en-GB', {maximumFractionDigits:0});
+// Each K is its own tier: T3 and T4 are different claims about what the method
+// needs, so unlike the old C3/C5 they must not be folded together anywhere.
+function tierKey(tier) {
+    return String(tier || '').toUpperCase();
 }
+
+function tierBadge(tier) {
+    const key = tierKey(tier);
+    const cls = TIER_COLORS[key] || 'bg-gray-700 text-gray-200';
+    const label = TIER_LABELS[key] || tier;
+    const title = TIER_TITLES[key] || '';
+    return `<span class="inline-block ${cls} px-2 py-1 rounded text-xs font-medium"
+        title="${title}">${label}</span>`;
+}
+
+function fmt(v, decimals) {
+    return (v === '' || v === null || v === undefined || isNaN(v))
+        ? '—' : parseFloat(v).toFixed(decimals);
+}
+
+/* The value a row is RANKED on, which is not always the value shown. A
+   below-chance ARI counts as none at all, the same clip the scorer applies, so
+   attempting the tie-breaker and missing can never cost a place. The card still
+   prints the reported figure with its sign. */
+function scoreRank(row) {
+    const r = parseInt(row.rank);
+    return Number.isFinite(r) ? r : Number.MAX_SAFE_INTEGER;
+}
+
+/* Rows with no value for the active metric always sort last, whichever way the
+   metric runs. Ties on the active metric fall through to RMSE, matching how the
+   scorer separates entries sitting at zero inside a band. */
+function compareMetric(a, b) { return scoreRank(a) - scoreRank(b); }
+function better(candidate, incumbent) { return scoreRank(candidate) < scoreRank(incumbent); }
 
 function cardBg(rank) {
     return rank <= 3
@@ -105,151 +265,268 @@ function medalSize(rank) {
     return rank <= 3 ? 'text-4xl' : 'text-2xl font-bold text-gray-500';
 }
 
-function renderRmse(data) {
-    if (!data.length) return '<div class="bg-gray-800 rounded-lg p-8 text-center text-gray-400">No submissions yet.</div>';
-    return data.map((row, i) => {
-        const rank = parseInt(row.rank);
-        return `
-        <div class="fade-in ${cardBg(rank)} rounded-lg shadow-md border-2 p-5 hover:shadow-xl transition-all" style="animation-delay:${i*0.05}s">
-          <div class="flex items-center justify-between">
-            <div class="rank-badge ${medalSize(rank)}">${medal(rank)}</div>
-            <div class="flex-1 mx-6">
-              <div class="text-xl font-bold text-white">Participant ${row.participant_id}</div>
-              <div class="mt-1 flex flex-wrap gap-2">
-                ${tierBadge(row.tier)}
-                <span class="inline-block bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">Sub #${row.sub_num}</span>
-                ${row.tier === 'C' && row.n_reference_turbines ? `<span class="inline-block bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">${row.n_reference_turbines} ref turbines</span>` : ''}
-              </div>
-            </div>
-            <div class="flex items-center gap-8 text-right">
-              <div>
-                <div class="text-3xl font-mono font-bold ${rank <= 3 ? 'text-orange-400' : 'text-gray-300'}">${fmt(row.rmse, 4)}</div>
-                <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">RMSE (°)</div>
-              </div>
-              <div>
-                <div class="text-3xl font-mono font-bold text-gray-400">${fmt(row.mae, 4)}</div>
-                <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">MAE (°)</div>
-              </div>
-            </div>
-          </div>
-        </div>`;
-    }).join('');
+/* ---------------------------------------------------------------------------
+   Filter parsing
+
+   Each box accepts a comma-separated list. Numeric entries may also be given
+   as an inclusive range ("23-25"). Matching is exact and case-insensitive.
+
+   Tier accepts the digit alone as well as the full code, so "0" and "T0" both
+   work, and "0,3" narrows to those two tiers.
+--------------------------------------------------------------------------- */
+function parseFilter(raw) {
+    const terms = raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (!terms.length) return null;
+
+    const exact  = new Set();
+    const ranges = [];
+    for (const t of terms) {
+        const m = t.match(/^(\d+)\s*-\s*(\d+)$/);
+        if (m) {
+            const lo = Math.min(+m[1], +m[2]);
+            const hi = Math.max(+m[1], +m[2]);
+            ranges.push([lo, hi]);
+        } else {
+            exact.add(t);
+        }
+    }
+    return { exact, ranges };
 }
 
-function renderEcon(data) {
-    if (!data.length) return '<div class="bg-gray-800 rounded-lg p-8 text-center text-gray-400">No submissions yet.</div>';
-    return data.map((row, i) => {
-        const rank = parseInt(row.rank);
+function matchesFilter(value, filter) {
+    if (!filter) return true;
+    const v = String(value ?? '').trim().toLowerCase();
+    if (filter.exact.has(v)) return true;
+    if (filter.ranges.length) {
+        const n = Number(v);
+        if (Number.isFinite(n) && v !== '') {
+            return filter.ranges.some(([lo, hi]) => n >= lo && n <= hi);
+        }
+    }
+    return false;
+}
+
+// Tier matches the full code or the digit alone, so "T3" and "3" both select T3.
+function matchesTier(tier, filter) {
+    if (!filter) return true;
+    const key = tierKey(tier);
+    // "T3" or bare "3" both select tier T3. Tiers are never merged: T3 and T4 are
+    // different claims, so there is no family match here as there was for C3/C5.
+    return matchesFilter(key, filter) || matchesFilter(key.replace(/^T/, ''), filter);
+}
+
+function activeFilters() {
+    return {
+        participant: parseFilter(document.getElementById('filterParticipant').value),
+        tier:        parseFilter(document.getElementById('filterTier').value),
+        sub:         parseFilter(document.getElementById('filterSub').value),
+    };
+}
+
+/* ---------------------------------------------------------------------------
+   Row selection: filter -> optionally reduce to each participant's best row
+   for the ACTIVE metric -> sort -> assign display rank.
+--------------------------------------------------------------------------- */
+function visibleRows() {
+    const f = activeFilters();
+    let rows = data[currentSplit].filter(r =>
+        matchesFilter(r.participant_id, f.participant) &&
+        matchesTier(r.tier,             f.tier) &&
+        matchesFilter(r.submission,     f.sub)
+    );
+
+    if (currentScope === 'best') {
+        // Best per participant PER TIER, not per participant. The tiers are not
+        // comparable -- an unsupervised method deploys to the whole fleet, a
+        // supervised one is capped by measurement throughput -- so collapsing
+        // them would hide someone's U entry behind their own S entry, which
+        // scores better precisely because it is worth less. Every TK is its own
+        // tier, so T3 and T4 are kept apart.
+        // "Best" is the highest-ranked entry under the official criteria, not the
+        // one with the smallest number on the tab you happen to be looking at.
+        const bestByEntry = new Map();
+        for (const r of rows) {
+            const key  = String(r.participant_id) + '|' + tierKey(r.tier);
+            const prev = bestByEntry.get(key);
+            if (!prev || better(r, prev)) {
+                bestByEntry.set(key, r);
+            }
+        }
+        rows = [...bestByEntry.values()];
+    }
+
+    // The order is always the scorer's `rank` (band -> ARI -> RMSE) whichever tab
+    // is open. The tabs choose which number is shown large, not who is ahead --
+    // re-sorting per tab would publish three different, contradictory standings.
+    rows.sort(compareMetric);
+    return rows.map((r, i) => ({ ...r, displayRank: i + 1 }));
+}
+
+function renderBoard(rows) {
+    if (!splitLoaded[currentSplit]) {
+        return '<div class="bg-gray-800 rounded-lg p-8 text-center text-gray-400">Loading…</div>';
+    }
+    if (!data[currentSplit].length) {
+        const msg = currentSplit === 'final'
+            ? 'No final submissions scored yet.'
+            : 'No submissions yet.';
+        return `<div class="bg-gray-800 rounded-lg p-8 text-center text-gray-400">${msg}</div>`;
+    }
+    if (!rows.length) {
+        return '<div class="bg-gray-800 rounded-lg p-8 text-center text-gray-400">No submissions match these filters.</div>';
+    }
+
+    // Primary metric first, then its companion(s). More than one companion (the
+    // Error Breakdown tab) prints each figure a size smaller so three numbers
+    // fit the same row the two-metric tabs use for two.
+    const companions = COMPANION[currentMetric] || [];
+    const blockSize = companions.length > 1 ? 'text-2xl' : 'text-3xl';
+    // `row` is passed in explicitly: this helper is built once per render, outside
+    // the per-row map below, so it cannot close over the row being drawn.
+    const otherBlock = (row, key) => `
+              <div title="${METRIC_TITLES[key] || ''}">
+                <div class="${blockSize} font-mono font-bold text-gray-400">${fmt(row[key], METRIC_DECIMALS[key])}</div>
+                <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">${METRIC_LABELS[key]}</div>
+              </div>`;
+
+    return rows.map((row, i) => {
+        const rank = row.displayRank;
         return `
-        <div class="fade-in ${cardBg(rank)} rounded-lg shadow-md border-2 p-5 hover:shadow-xl transition-all" style="animation-delay:${i*0.05}s">
+        <div class="fade-in ${cardBg(rank)} rounded-lg shadow-md border-2 p-5 hover:shadow-xl transition-all" style="animation-delay:${Math.min(i, 20)*0.05}s">
           <div class="flex items-center justify-between flex-wrap gap-4">
             <div class="rank-badge ${medalSize(rank)}">${medal(rank)}</div>
             <div class="flex-1 min-w-0 mx-4">
               <div class="text-xl font-bold text-white">Participant ${row.participant_id}</div>
               <div class="mt-1 flex flex-wrap gap-2">
                 ${tierBadge(row.tier)}
-                <span class="inline-block bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">Sub #${row.sub_num}</span>
-                ${row.tier === 'C' && row.n_reference_turbines ? `<span class="inline-block bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">${row.n_reference_turbines} ref turbines</span>` : ''}
+                <span class="inline-block bg-gray-700 text-gray-300 px-2 py-1 rounded text-xs">Sub #${row.submission}</span>
+                ${bandBadge(row.band)}
               </div>
             </div>
-            <div class="flex items-center gap-6 text-right flex-wrap justify-end">
-              <div>
-                <div class="text-3xl font-mono font-bold ${rank <= 3 ? 'text-emerald-400' : 'text-gray-300'}">${fmtEur(row.net_score_eur)}</div>
-                <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Net Score / yr</div>
+            <div class="flex items-center gap-6 md:gap-8 text-right">
+              <div title="${METRIC_TITLES[currentMetric] || ''}">
+                <div class="${blockSize} font-mono font-bold ${rank <= 3 ? METRIC_COLORS[currentMetric] : 'text-gray-300'}">${fmt(row[currentMetric], METRIC_DECIMALS[currentMetric])}</div>
+                <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">${METRIC_LABELS[currentMetric]}</div>
+                ${currentMetric === 'rmse' && row.gap_vs_lead ? `<div class="text-xs text-gray-500 mt-1 normal-case" title="Paired bootstrap over misalignment regimes: the RMSE margin needed to be provably better than this band's leader.">needs ${fmt(row.gap_vs_lead, 2)} to beat band lead</div>` : ''}
               </div>
-              <div>
-                <div class="text-xl font-mono font-bold text-gray-400">${fmtEur(row.per_turbine_annual_eur)}</div>
-                <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Per turbine</div>
-              </div>
-              <div>
-                <div class="text-xl font-mono font-bold text-gray-400">${parseInt(row.turbines_year1).toLocaleString()}</div>
-                <div class="text-xs text-gray-400 uppercase tracking-wider mt-1">Turbines yr 1</div>
-              </div>
+              ${companions.map(key => otherBlock(row, key)).join('')}
             </div>
           </div>
         </div>`;
     }).join('');
 }
 
-function renderStats() {
-    const data = currentTab === 'rmse' ? rmseData : econData;
-    const participants = new Set(data.map(r => r.participant_id)).size;
-    const subs = data.length;
+function renderStats(rows) {
+    const participants = new Set(rows.map(r => r.participant_id)).size;
+    const leader = rows.length ? rows[0] : null;
 
-    let extra1, extra2;
-    if (currentTab === 'rmse') {
-        extra1 = `<div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
-            <div class="text-3xl font-bold text-orange-400">${data.length ? fmt(data[0].rmse, 4) : '—'}</div>
-            <div class="text-gray-300 mt-2">Best RMSE (°)</div></div>`;
-        extra2 = `<div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
-            <div class="text-3xl font-bold text-purple-400">${data.length ? fmt(data[0].mae, 4) : '—'}</div>
-            <div class="text-gray-300 mt-2">Best MAE (°)</div></div>`;
-    } else {
-        extra1 = `<div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
-            <div class="text-3xl font-bold text-emerald-400">${data.length ? fmtEur(data[0].net_score_eur) : '—'}</div>
-            <div class="text-gray-300 mt-2">Best Net Score</div></div>`;
-        extra2 = `<div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
-            <div class="text-3xl font-bold text-blue-400">${data.length ? parseInt(data[0].turbines_year1).toLocaleString() : '—'}</div>
-            <div class="text-gray-300 mt-2">Turbines (best)</div></div>`;
-    }
+    // The leader is not always the best raw number: inside a band the clustering
+    // ARI sets the order, so rank 1 can carry a higher RMSE than someone below it.
+    // Both are shown, and the gap between them is itself worth seeing.
+    const vals = rows.map(r => parseFloat(r[currentMetric])).filter(v => !isNaN(v));
+    const bestVal = vals.length
+        ? (LOWER_IS_BETTER[currentMetric] ? Math.min(...vals) : Math.max(...vals))
+        : null;
 
     document.getElementById('stats').innerHTML = `
         <div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
-            <div class="text-4xl font-bold text-blue-400">${subs}</div>
-            <div class="text-gray-300 mt-2">Submissions</div>
+            <div class="text-4xl font-bold text-blue-400">${rows.length}</div>
+            <div class="text-gray-300 mt-2">${currentScope === 'best' ? 'Submissions shown' : 'Submissions shown'}</div>
         </div>
         <div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
             <div class="text-4xl font-bold text-green-400">${participants}</div>
             <div class="text-gray-300 mt-2">Participants</div>
         </div>
-        ${extra1}${extra2}`;
-}
-
-function filterData(data) {
-    const q = document.getElementById('searchInput').value.toLowerCase();
-    if (!q) return data;
-    return data.filter(r =>
-        String(r.participant_id).toLowerCase().includes(q) ||
-        String(r.tier).toLowerCase().includes(q)
-    );
+        <div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
+            <div class="text-3xl font-bold ${METRIC_COLORS[currentMetric]}">${bestVal === null ? '—' : fmt(bestVal, METRIC_DECIMALS[currentMetric])}</div>
+            <div class="text-gray-300 mt-2">Best ${METRIC_LABELS[currentMetric]}</div>
+        </div>
+        <div class="bg-gray-800 rounded-lg shadow-md p-6 text-center">
+            <div class="text-3xl font-bold text-gray-400">${leader ? fmt(leader[currentMetric], METRIC_DECIMALS[currentMetric]) : '—'}</div>
+            <div class="text-gray-300 mt-2">Leader's ${METRIC_LABELS[currentMetric]}</div>
+        </div>`;
 }
 
 function refresh() {
-    const rmse = filterData(rmseData);
-    const econ = filterData(econData);
-    document.getElementById('board-rmse').innerHTML = renderRmse(rmse);
-    document.getElementById('board-econ').innerHTML = renderEcon(econ);
-    renderStats();
+    const rows = visibleRows();
+    document.getElementById('board').innerHTML = renderBoard(rows);
+    renderStats(rows);
+
+    const total = data[currentSplit].length;
+    const noun = currentScope === 'best' ? 'participants' : 'submissions';
+    document.getElementById('filterCount').textContent =
+        total ? `Showing ${rows.length} ${noun} of ${total} scored submissions` : '';
 }
 
-function showTab(tab) {
-    currentTab = tab;
-    document.getElementById('board-rmse').classList.toggle('hidden', tab !== 'rmse');
-    document.getElementById('board-econ').classList.toggle('hidden', tab !== 'econ');
-    document.getElementById('tab-rmse').className =
-        tab === 'rmse'
-        ? 'px-6 py-3 text-white font-semibold border-b-2 border-blue-500 focus:outline-none'
-        : 'px-6 py-3 text-gray-400 font-semibold border-b-2 border-transparent focus:outline-none hover:text-white';
-    document.getElementById('tab-econ').className =
-        tab === 'econ'
-        ? 'px-6 py-3 text-white font-semibold border-b-2 border-blue-500 focus:outline-none'
-        : 'px-6 py-3 text-gray-400 font-semibold border-b-2 border-transparent focus:outline-none hover:text-white';
-    renderStats();
+/* ---------------------------------------------------------------------------
+   Toggles
+--------------------------------------------------------------------------- */
+const TAB_ON  = 'px-6 py-3 text-white font-semibold border-b-2 border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-t';
+const TAB_OFF = 'px-6 py-3 text-gray-400 font-semibold border-b-2 border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-t hover:text-white';
+const SEG_ON  = 'px-3 py-1.5 text-sm bg-blue-600 text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-400';
+const SEG_OFF = 'px-3 py-1.5 text-sm text-gray-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500';
+
+function paintToggles() {
+    for (const m of ['rmse', 'mae', 'cluster_ari']) {
+        document.getElementById('tab-' + m).className = currentMetric === m ? TAB_ON : TAB_OFF;
+    }
+
+    document.getElementById('split-validate').className = currentSplit === 'validate' ? SEG_ON : SEG_OFF;
+    document.getElementById('split-final').className    = (currentSplit === 'final' ? SEG_ON : SEG_OFF) + ' border-l border-gray-600';
+
+    document.getElementById('scope-best').className = currentScope === 'best' ? SEG_ON : SEG_OFF;
+    document.getElementById('scope-all').className  = (currentScope === 'all' ? SEG_ON : SEG_OFF) + ' border-l border-gray-600';
 }
 
-document.getElementById('searchInput').addEventListener('input', refresh);
+function showTab(metric) { currentMetric = metric; paintToggles(); refresh(); }
+function setSplit(split) { currentSplit = split;  paintToggles(); refresh(); }
+function setScope(scope) { currentScope = scope;  paintToggles(); refresh(); }
 
+function clearFilters() {
+    ['filterParticipant', 'filterTier', 'filterSub'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    refresh();
+}
+
+['filterParticipant', 'filterTier', 'filterSub'].forEach(id => {
+    document.getElementById(id).addEventListener('input', refresh);
+});
+
+/* ---------------------------------------------------------------------------
+   Loading
+--------------------------------------------------------------------------- */
 function loadAll() {
+    const splits = Object.keys(SPLIT_URLS);
     let loaded = 0;
-    function done() { if (++loaded === 2) { document.getElementById('loading').style.display='none'; refresh(); updateTimestamp(); } }
-    Papa.parse(RMSE_URL, { download:true, header:true,
-        complete(r) { rmseData = r.data.filter(row => row.rank && row.rmse); done(); },
-        error(e) { showError('Could not load RMSE ranking: ' + e.message); done(); }
-    });
-    Papa.parse(ECON_URL, { download:true, header:true,
-        complete(r) { econData = r.data.filter(row => row.rank && row.net_score_eur); done(); },
-        error(e) { showError('Could not load economic ranking: ' + e.message); done(); }
-    });
+    function done() {
+        if (++loaded === splits.length) {
+            document.getElementById('loading').style.display = 'none';
+            refresh();
+            updateTimestamp();
+        }
+    }
+    for (const split of splits) {
+        Papa.parse(SPLIT_URLS[split] + '?t=' + Date.now(), {
+            download: true, header: true,
+            complete(r) {
+                data[split] = r.data.filter(row => row.participant_id && row.rmse !== '');
+                splitLoaded[split] = true;
+                done();
+            },
+            error(e) {
+                // A missing final ranking is expected until final submissions land.
+                if (split === 'final') {
+                    data.final = [];
+                    splitLoaded.final = true;
+                } else {
+                    showError('Could not load ' + split + ' ranking: ' + e.message);
+                    splitLoaded[split] = true;
+                }
+                done();
+            }
+        });
+    }
 }
 
 function updateTimestamp() {
@@ -260,6 +537,7 @@ function showError(msg) {
     document.getElementById('error').classList.remove('hidden');
 }
 
+paintToggles();
 setInterval(loadAll, 5 * 60 * 1000);
 loadAll();
 </script>
